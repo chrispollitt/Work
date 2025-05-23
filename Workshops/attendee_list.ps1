@@ -7,26 +7,8 @@
     This script navigates to a specified WP Events Calendar event URL, accesses the Attendees page,
     exports the attendee list, and processes the CSV data by reformatting columns, names, and phone numbers.
     
-.PARAMETER EventUrl
-    The URL of the event page from which to export attendees.
-    
-.PARAMETER OutputPath
-    Optional. Custom path where the processed CSV should be saved. If not specified, the file will be saved to the Desktop.
-    
-.EXAMPLE
-    .\Export-EventAttendees.ps1 -EventUrl "https://midtown.pcrs.ca/event/career-planning-day-1-zoom-11/"
-    
-.EXAMPLE
-    .\Export-EventAttendees.ps1 -EventUrl "https://midtown.pcrs.ca/event/career-planning-day-1-zoom-11/" -OutputPath "C:\Data\Processed-Attendees.csv"
 #>
 
-param (
-    [Parameter(Mandatory = $true)]
-    [string]$EventUrl,
-    
-    [Parameter(Mandatory = $false)]
-    [string]$OutputPath = "$env:OneDriveCommercial\Desktop\Processed-Attendees.csv"
-)
 
 function Write-Log {
     param (
@@ -36,43 +18,6 @@ function Write-Log {
     
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     Write-Host "[$timestamp] [$Level] $Message"
-}
-
-function Wait-ForFileDownload {
-    param (
-        [string]$DownloadFolder,
-        [string]$FilePattern,
-        [int]$TimeoutSeconds = 60
-    )
-    
-    Write-Log "Waiting for file matching pattern '$FilePattern' to appear in $DownloadFolder..."
-    
-    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-    $fileFound = $false
-    
-    while ($stopwatch.Elapsed.TotalSeconds -lt $TimeoutSeconds) {
-        $files = Get-ChildItem -Path $DownloadFolder -Filter $FilePattern | Sort-Object LastWriteTime -Descending
-        
-        if ($files.Count -gt 0) {
-            $newestFile = $files[0]
-            $fileAge = (Get-Date) - $newestFile.LastWriteTime
-            
-            # Consider the file as "done downloading" if it's been created/modified within the last 10 seconds
-            if ($fileAge.TotalSeconds -lt 10) {
-                Write-Log "File is still being written, waiting for download to complete..."
-                Start-Sleep -Seconds 2
-                continue
-            }
-            
-            Write-Log "Found downloaded file: $($newestFile.FullName)"
-            return $newestFile.FullName
-        }
-        
-        Start-Sleep -Seconds 1
-    }
-    
-    Write-Log "Timeout waiting for download to complete" -Level "ERROR"
-    throw "Timeout waiting for file matching '$FilePattern' to appear in $DownloadFolder"
 }
 
 function Format-PhoneNumber {
@@ -125,58 +70,21 @@ function Format-PersonName {
     }
 }
 
+# MAIN ##########################################
 try {
-    # Check if Edge is installed (preferred for automation)
-    $edgePath = "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe"
-    $chromePath = "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe"
-    $browserPath = ""
+    # Step 1: call nodevars.bat to setup env
+	Source-Bat "c:/Users/cpollitt/OneDrive-PCRS/dev/node/nodevars.bat"
     
-    if (Test-Path $edgePath) {
-        $browserPath = $edgePath
-        Write-Log "Microsoft Edge detected, will use for automation."
-    }
-    elseif (Test-Path $chromePath) {
-        $browserPath = $chromePath
-        Write-Log "Google Chrome detected, will use for automation."
-    }
-    else {
-        Write-Log "Neither Microsoft Edge nor Google Chrome found in standard locations. Using default system browser." -Level "WARNING"
-    }
-    
-    # Step 1: Navigate to event URL
-    Write-Log "Navigating to event URL: $EventUrl"
-    
-    if ($browserPath) {
-        Start-Process $browserPath -ArgumentList $EventUrl
-    }
-    else {
-        Start-Process $EventUrl
-    }
-    
-    # Step 2: Prompt user to navigate to attendees page and export
-    Write-Host ""
-    Write-Host "==================================================" -ForegroundColor Cyan
-    Write-Host "MANUAL ACTION REQUIRED" -ForegroundColor Yellow
-    Write-Host "==================================================" -ForegroundColor Cyan
-    Write-Host "1. In the browser that just opened, click on the 'Attendees' link at the top"
-    Write-Host "2. Click the 'Export' button to download the attendee list"
-    Write-Host "3. Wait for the download to complete, then press Enter to continue"
-    Write-Host "==================================================" -ForegroundColor Cyan
-    Write-Host ""
-    $null = Read-Host "Press Enter once the export has been downloaded"
+    # Step 2: call export-attendees.js
+    Write-Log "Calling export-attendees.js"
+    Start-Process "node" -ArgumentList "export-attendees.js"
     
     # Step 3: Find the downloaded CSV file
     $downloadFolder = "$env:USERPROFILE\Downloads"
-    $csvPattern = "*Career*Planning*Day*attendees*.csv"
+    $csvPattern = "*attendees*.csv"
     
-    try {
-        $csvPath = Wait-ForFileDownload -DownloadFolder $downloadFolder -FilePattern $csvPattern
-        Write-Log "Found downloaded CSV: $csvPath"
-    }
-    catch {
-        Write-Log "Error finding the downloaded CSV file: $_" -Level "ERROR"
-        throw "Could not find the attendee CSV file in the Downloads folder. Please check if the file was downloaded correctly."
-    }
+    $csvPath = Wait-ForFileDownload -DownloadFolder $downloadFolder -FilePattern $csvPattern
+    Write-Log "Found downloaded CSV: $csvPath"
     
     # Step 4: Process the CSV file
     Write-Log "Processing CSV file..."
@@ -218,9 +126,8 @@ try {
     Write-Host $OutputPath -ForegroundColor Yellow
     Write-Host "==================================================" -ForegroundColor Green
     
-    # Open Windows Explorer to the location of the processed file
-    $folderPath = Split-Path -Parent $OutputPath
-    Start-Process "explorer.exe" -ArgumentList $folderPath
+    # Open  the processed file
+    Start-Process "excel.exe" -ArgumentList $OutputPath
 }
 catch {
     Write-Log "Error processing attendee list: $_" -Level "ERROR"

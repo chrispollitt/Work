@@ -16,8 +16,11 @@
 # 
 # We need to scrape the subsequent URLs as only the fist is stable.
 # 
-# npm install jsdom node-fetch inquirer
+# . 
+# npm install jsdom node-fetch inquirer -g
 # node export-attendees.js
+
+/// USER SERVICEABLE PARTS (USP) /////////////////////////////
 
 const workshopTypes = [
   'Basic Life',
@@ -29,14 +32,117 @@ const workshopTypes = [
   'Education'
 ];
 
+const CREDS_FILE = path.join(process.env.USERPROFILE, '.wp_creds');
+const ENCRYPTION_KEY = 'ThisIsTheKeyToEverythingShhhhh'; 
+
+/// END USP ////////////////////////////////////////////////////
+
 const { JSDOM } = require('jsdom');
 const fetch = require('node-fetch');
 const fs = require('fs');
 const inquirer = require('inquirer');
 const path = require('path');
+const crypto = require('crypto');
+const { promisify } = require('util');
 
 // Store cookies for authenticated requests
 let cookies = [];
+
+/// FUNCTIONS /////////////////////////////////////////////////////
+
+// Simple encryption/decryption functions
+function encrypt(text) {
+  const cipher = crypto.createCipher('aes-256-ctr', ENCRYPTION_KEY);
+  let encrypted = cipher.update(text, 'utf8', 'hex');
+  encrypted += cipher.final('hex');
+  return encrypted;
+}
+
+function decrypt(encrypted) {
+  try {
+    const decipher = crypto.createDecipher('aes-256-ctr', ENCRYPTION_KEY);
+    let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+    return decrypted;
+  } catch (error) {
+    return null;
+  }
+}
+
+// Save credentials to file
+function saveCredentials(username, password) {
+  const data = JSON.stringify({
+    username,
+    password
+  });
+  
+  const encrypted = encrypt(data);
+  fs.writeFileSync(CREDS_FILE, encrypted);
+  console.log('Credentials saved securely');
+}
+
+// Load credentials from file
+function loadCredentials() {
+  try {
+    if (!fs.existsSync(CREDS_FILE)) {
+      return null;
+    }
+    
+    const encrypted = fs.readFileSync(CREDS_FILE, 'utf8');
+    const decrypted = decrypt(encrypted);
+    
+    if (!decrypted) {
+      return null;
+    }
+    
+    return JSON.parse(decrypted);
+  } catch (error) {
+    console.error('Error loading credentials:', error.message);
+    return null;
+  }
+}
+
+// Prompt for credentials if needed
+async function getCredentials() {
+  // Try to load existing credentials
+  const saved = loadCredentials();
+  if (saved) {
+    return saved;
+  }
+  
+  // Prompt for new credentials
+  const credentials = await inquirer.prompt([
+    {
+      type: 'input',
+      name: 'username',
+      message: 'Enter your WordPress username:',
+      validate: input => input.length > 0 ? true : 'Username is required'
+    },
+    {
+      type: 'password',
+      name: 'password',
+      message: 'Enter your WordPress password:',
+      mask: '*',
+      validate: input => input.length > 0 ? true : 'Password is required'
+    },
+    {
+      type: 'confirm',
+      name: 'save',
+      message: 'Save credentials for future use?',
+      default: true
+    }
+  ]);
+  
+  // Save if requested
+  if (credentials.save) {
+    saveCredentials(credentials.username, credentials.password);
+  }
+  
+  return {
+    username: credentials.username,
+    password: credentials.password
+  };
+}
 
 // Update cookies from response
 function updateCookies(response) {
@@ -362,6 +468,8 @@ async function downloadAttendeesCsv(exportUrl, workshopType) {
 // Main function to export attendees
 async function exportAttendees(username, password) {
   try {
+    console.log(`Starting export process as user: ${username}`);
+    
     // Step 1: Login
     const loggedIn = await login(username, password);
     if (!loggedIn) {
@@ -411,9 +519,18 @@ async function exportAttendees(username, password) {
   }
 }
 
-// Replace with your WordPress admin credentials
-const username = 'your-wp-admin-username';
-const password = 'your-wp-admin-password';
+// Main entry point - no hardcoded credentials
+async function main() {
+  try {
+    // Get credentials securely
+    const creds = await getCredentials();
+    
+    // Run the export with the credentials
+    await exportAttendees(creds.username, creds.password);
+  } catch (error) {
+    console.error(`Error: ${error.message}`);
+  }
+}
 
-// Run the export
-exportAttendees(username, password);
+// Start the program
+main();
