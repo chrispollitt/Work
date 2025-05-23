@@ -1,14 +1,18 @@
 <#
 .SYNOPSIS
     Script to export and process attendee lists from WP Events Calendar.
-	SHould use Microsoft Edge DevTools Protocol in future version
     
 .DESCRIPTION
-    This script navigates to a specified WP Events Calendar event URL, accesses the Attendees page,
-    exports the attendee list, and processes the CSV data by reformatting columns, names, and phone numbers.
-    
+    This script calls the Node.js export-attendees.js script, waits for completion,
+    finds the downloaded CSV, and processes it by reformatting columns, names, and phone numbers.
+
+.EXAMPLE
+    powershell -File attendee_list.ps1
 #>
 
+param(
+    [string]$OutputPath = "$env:USERPROFILE\Downloads\processed-attendees-$(Get-Date -Format 'yyyy-MM-dd').csv"
+)
 
 function Write-Log {
     param (
@@ -18,6 +22,47 @@ function Write-Log {
     
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     Write-Host "[$timestamp] [$Level] $Message"
+}
+
+function Source-Bat {
+    param([string]$batPath)
+    
+    if (Test-Path $batPath) {
+        Write-Log "Sourcing batch file: $batPath"
+        cmd /c "`"$batPath`" && set" | ForEach-Object {
+            if ($_ -match "^(.+?)=(.*)$") {
+                Set-Item "env:\$($matches[1])" $matches[2]
+            }
+        }
+    } else {
+        Write-Log "Batch file not found: $batPath" -Level "WARNING"
+    }
+}
+
+function Wait-ForFileDownload {
+    param(
+        [string]$DownloadFolder,
+        [string]$FilePattern,
+        [int]$TimeoutSeconds = 300
+    )
+    
+    Write-Log "Waiting for file matching pattern '$FilePattern' in '$DownloadFolder'..."
+    
+    $startTime = Get-Date
+    do {
+        $files = Get-ChildItem -Path $DownloadFolder -Filter $FilePattern | Sort-Object LastWriteTime -Descending
+        
+        if ($files.Count -gt 0) {
+            # Return the most recent file
+            return $files[0].FullName
+        }
+        
+        Start-Sleep -Seconds 2
+        $elapsed = (Get-Date) - $startTime
+        
+    } while ($elapsed.TotalSeconds -lt $TimeoutSeconds)
+    
+    throw "Timeout waiting for file download after $TimeoutSeconds seconds"
 }
 
 function Format-PhoneNumber {
@@ -72,12 +117,23 @@ function Format-PersonName {
 
 # MAIN ##########################################
 try {
-    # Step 1: call nodevars.bat to setup env
-	Source-Bat "c:/Users/cpollitt/OneDrive-PCRS/dev/node/nodevars.bat"
+    Write-Log "Starting attendee list export and processing..."
     
-    # Step 2: call export-attendees.js
-    Write-Log "Calling export-attendees.js"
-    Start-Process "node" -ArgumentList "export-attendees.js"
+    # Step 1: Setup Node.js environment if batch file exists
+    $nodeVarsBat = "c:/Users/cpollitt/OneDrive-PCRS/dev/node/nodevars.bat"
+    if (Test-Path $nodeVarsBat) {
+        Source-Bat $nodeVarsBat
+    }
+    
+    # Step 2: Call export-attendees.js and wait for completion
+    Write-Log "Calling export-attendees.js..."
+    $nodeProcess = Start-Process "node" -ArgumentList "export-attendees.js" -Wait -PassThru -NoNewWindow
+    
+    if ($nodeProcess.ExitCode -ne 0) {
+        throw "Node.js script failed with exit code: $($nodeProcess.ExitCode)"
+    }
+    
+    Write-Log "Node.js script completed successfully"
     
     # Step 3: Find the downloaded CSV file
     $downloadFolder = "$env:USERPROFILE\Downloads"
@@ -96,6 +152,13 @@ try {
     
     # Read the CSV data
     $attendees = Import-Csv -Path $csvPath
+    
+    if ($attendees.Count -eq 0) {
+        Write-Log "No attendees found in CSV file" -Level "WARNING"
+        return
+    }
+    
+    Write-Log "Processing $($attendees.Count) attendee records..."
     
     # Create new custom objects with desired properties
     $processedAttendees = $attendees | ForEach-Object {
@@ -124,10 +187,16 @@ try {
     Write-Host "SUCCESS: Attendee list has been processed!" -ForegroundColor Green
     Write-Host "The processed file has been saved to:" -ForegroundColor Green
     Write-Host $OutputPath -ForegroundColor Yellow
+    Write-Host "Total attendees processed: $($processedAttendees.Count)" -ForegroundColor Green
     Write-Host "==================================================" -ForegroundColor Green
     
-    # Open  the processed file
-    Start-Process "excel.exe" -ArgumentList $OutputPath
+    # Open the processed file in Excel
+    if (Get-Command "excel.exe" -ErrorAction SilentlyContinue) {
+        Start-Process "excel.exe" -ArgumentList $OutputPath
+    } else {
+        Write-Log "Excel not found, opening with default CSV handler"
+        Start-Process $OutputPath
+    }
 }
 catch {
     Write-Log "Error processing attendee list: $_" -Level "ERROR"

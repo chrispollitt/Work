@@ -1,24 +1,26 @@
-# I want to use npm's jsdom to interact with a WordPress site that uses these WP plugins for a workshop calendar site:
-# 
-# * The Events Calendar
-# * Event Tickets Plus
-# 
-# Sadly, we must assume the WP web-APIs have been disabled.
-# 
-# Let's assume I'm a WP-Admin and have access to the Attendee's list and want to export it.
-# Here is an example sequence of URLs to scrape and then follow. 
-# In this case I want the next interview-skills workshop participant list:
-# 
-# * https://midtown.pcrs.ca/calendar/
-# * https://midtown.pcrs.ca/event/job-search-day-3-interview-skills-east-24/
-# * https://midtown.pcrs.ca/wp-admin/edit.php?post_type=tribe_events&page=tickets-attendees&event_id=27068
-# * https://midtown.pcrs.ca/wp-admin/edit.php?post_type=tribe_events&page=tickets-attendees&event_id=27068&attendees_csv=1&attendees_csv_nonce=87237473d0
-# 
-# We need to scrape the subsequent URLs as only the fist is stable.
-# 
-# . 
-# npm install jsdom node-fetch inquirer -g
-# node export-attendees.js
+// I want to use npm's jsdom to interact with a WordPress site that uses these WP plugins for a workshop calendar site:
+// 
+// * The Events Calendar
+// * Event Tickets Plus
+// 
+// Sadly, we must assume the WP web-APIs have been disabled.
+// 
+// Let's assume I'm a WP-Admin and have access to the Attendee's list and want to export it.
+// Here is an example sequence of URLs to scrape and then follow. 
+// In this case I want the next interview-skills workshop participant list:
+// 
+// * https://midtown.pcrs.ca/calendar/
+// * https://midtown.pcrs.ca/event/job-search-day-3-interview-skills-east-24/
+// * https://midtown.pcrs.ca/wp-admin/edit.php?post_type=tribe_events&page=tickets-attendees&event_id=27068
+// * https://midtown.pcrs.ca/wp-admin/edit.php?post_type=tribe_events&page=tickets-attendees&event_id=27068&attendees_csv=1&attendees_csv_nonce=87237473d0
+// 
+// We need to scrape the subsequent URLs as only the fist is stable.
+// 
+// . 
+// npm install jsdom node-fetch inquirer -g
+// node export-attendees.js
+
+const path = require('path');
 
 /// USER SERVICEABLE PARTS (USP) /////////////////////////////
 
@@ -38,10 +40,11 @@ const ENCRYPTION_KEY = 'ThisIsTheKeyToEverythingShhhhh';
 /// END USP ////////////////////////////////////////////////////
 
 const { JSDOM } = require('jsdom');
-const fetch = require('node-fetch');
+const fetch = globalThis.fetch;
 const fs = require('fs');
 const inquirer = require('inquirer');
-const path = require('path');
+const { createPromptModule } = inquirer;
+const prompt = createPromptModule();
 const crypto = require('crypto');
 const { promisify } = require('util');
 
@@ -111,7 +114,7 @@ async function getCredentials() {
   }
   
   // Prompt for new credentials
-  const credentials = await inquirer.prompt([
+  const credentials = await prompt([
     {
       type: 'input',
       name: 'username',
@@ -146,9 +149,18 @@ async function getCredentials() {
 
 // Update cookies from response
 function updateCookies(response) {
-  const setCookies = response.headers.raw()['set-cookie'];
-  if (setCookies) {
-    setCookies.forEach(cookie => {
+  // Get all set-cookie headers
+  const setCookieHeaders = [];
+  
+  // The built-in fetch stores headers differently
+  response.headers.forEach((value, name) => {
+    if (name.toLowerCase() === 'set-cookie') {
+      setCookieHeaders.push(value);
+    }
+  });
+  
+  if (setCookieHeaders.length > 0) {
+    setCookieHeaders.forEach(cookie => {
       const cookieName = cookie.split('=')[0];
       cookies = cookies.filter(c => !c.startsWith(`${cookieName}=`));
       cookies.push(cookie.split(';')[0]);
@@ -218,7 +230,7 @@ async function login(username, password) {
 // Prompt user to select workshop type
 async function promptWorkshopType() {
   
-  const answer = await inquirer.prompt([
+  const answer = await prompt([
     {
       type: 'list',
       name: 'workshopType',
@@ -244,9 +256,9 @@ async function findWorkshopEvents(calendarUrl, workshopType) {
   const searchTerms = {
     'Basic Life': ['basic life', 'life skills'],
     'Essential Work': ['essential work', 'work essential'],
-    'Career Planning': ['career planning', 'plan your career'],
-    'Resume': ['resume', 'cv', 'curriculum vitae'],
-    'Interviews': ['interview', 'interviewing skills'],
+    'Career Planning': ['career planning', 'career exploration'],
+    'Resume': ['resume'],
+    'Interview': ['interview', 'interviewing skills'],
     'Networking': ['network', 'networking'],
     'Education': ['education', 'educational']
   };
@@ -371,7 +383,7 @@ async function selectEvent(events) {
     value: event.url
   }));
   
-  const answer = await inquirer.prompt([
+  const answer = await prompt([
     {
       type: 'list',
       name: 'eventUrl',
