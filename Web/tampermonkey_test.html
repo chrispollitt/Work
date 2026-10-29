@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dialog Control Test Page</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            background-color: #f4f7f9;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+        }
+        main {
+            max-width: 900px;
+            margin: 0 auto;
+            background-color: #fff;
+            padding: 25px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        }
+        h1, h2 {
+            border-bottom: 2px solid #eef;
+            padding-bottom: 10px;
+            color: #1c7cc5;
+        }
+        h1 {
+            text-align: center;
+        }
+        .instructions {
+            background-color: #eef;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .test-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 30px;
+        }
+        @media (min-width: 768px) {
+            .test-grid {
+                grid-template-columns: repeat(3, 1fr);
+            }
+        }
+        section {
+            background-color: #fdfdfd;
+            border: 1px solid #eee;
+            padding: 20px;
+            border-radius: 5px;
+        }
+        section h2 {
+            margin-top: 0;
+            font-size: 1.2em;
+        }
+        button {
+            display: block;
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 10px;
+            border: none;
+            border-radius: 4px;
+            background-color: #1c7cc5;
+            color: white;
+            font-size: 1em;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        button:hover {
+            background-color: #1666a1;
+        }
+        button.secondary {
+            background-color: #5c6ac4;
+        }
+        button.secondary:hover {
+            background-color: #4a57a1;
+        }
+        button.danger {
+            background-color: #d9534f;
+        }
+        button.danger:hover {
+            background-color: #c9302c;
+        }
+        .log-container {
+            margin-top: 20px;
+            background-color: #2d333b;
+            color: #cdd9e5;
+            padding: 15px;
+            border-radius: 5px;
+            font-family: 'Courier New', Courier, monospace;
+        }
+        .log-container h2 {
+            color: #fff;
+            border-bottom: 1px solid #444;
+            margin-top: 0;
+        }
+        #log {
+            white-space: pre-wrap;
+            word-break: break-all;
+            height: 150px;
+            overflow-y: auto;
+            background-color: #22272e;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        #clearLog {
+            width: auto;
+            padding: 5px 10px;
+            font-size: 0.8em;
+            float: right;
+            margin-top: -55px;
+            background-color: #666;
+        }
+    </style>
+    <script>
+        // TEST CASE 0: EARLY EXECUTION
+        // This alert fires from the <head> before the DOM is parsed.
+        // The script should queue this message and display it once the dialog is ready.
+        window.alert("This alert fires from the <head>, before the DOM is ready.");
+    </script>
+</head>
+<body>
+    <main>
+        <h1>Advanced Dialog Control Test Page</h1>
+        <div class="instructions">
+            <p>This page tests the Tampermonkey script that replaces `alert`, `confirm`, and `prompt`. Make sure the script is active, then click the buttons below.</p>
+        </div>
+
+        <div class="test-grid">
+            <!-- Alert Tests -->
+            <section>
+                <h2>window.alert()</h2>
+                <button id="singleAlert">Single Alert</button>
+                <button id="multiLineAlert" class="secondary">Multi-line Alert</button>
+                <button id="ignoredAlert" class="secondary">Ignored Alert</button>
+                <button id="rapidAlerts" class="danger">5 Rapid-Fire Alerts</button>
+            </section>
+
+            <!-- Confirm Tests -->
+            <section>
+                <h2>window.confirm()</h2>
+                <button id="singleConfirm">Single Confirm</button>
+                <button id="rapidConfirms" class="danger">5 Rapid-Fire Confirms</button>
+            </section>
+
+            <!-- Prompt Tests -->
+            <section>
+                <h2>window.prompt()</h2>
+                <button id="singlePrompt">Single Prompt</button>
+                <button id="rapidPrompts" class="danger">5 Rapid-Fire Prompts</button>
+            </section>
+        </div>
+
+        <div class="log-container">
+            <h2>Test Log</h2>
+            <button id="clearLog">Clear Log</button>
+            <pre id="log"></pre>
+        </div>
+    </main>
+
+    <script>
+        // --- Test Page Logic ---
+        const logEl = document.getElementById('log');
+        const logResult = (message) => {
+            const timestamp = new Date().toLocaleTimeString();
+            logEl.textContent += `[${timestamp}] ${message}\n`;
+            logEl.scrollTop = logEl.scrollHeight; // Auto-scroll to bottom
+        };
+
+        // --- Alert Button Handlers ---
+        document.getElementById('singleAlert').addEventListener('click', () => {
+            logResult("Firing single alert...");
+            window.alert('This is a single, normal alert.');
+        });
+
+        document.getElementById('multiLineAlert').addEventListener('click', () => {
+            logResult("Firing multi-line alert...");
+            window.alert('This is line one.\nThis is line two.\nAnd a third!');
+        });
+
+        document.getElementById('ignoredAlert').addEventListener('click', () => {
+            logResult("Firing an alert that should be ignored...");
+            window.alert('This site is not compatible with Internet Explorer.');
+            logResult("...ignored alert was fired (check console).");
+        });
+
+        document.getElementById('rapidAlerts').addEventListener('click', () => {
+            logResult("Firing 5 rapid alerts (every 50ms)...");
+            let count = 0;
+            const interval = setInterval(() => {
+                if (++count > 5) {
+                    clearInterval(interval);
+                    logResult('Finished firing rapid alerts.');
+                    return;
+                }
+                window.alert(`This is rapid alert message #${count}.`);
+            }, 50);
+        });
+
+        // --- Confirm Button Handlers ---
+        document.getElementById('singleConfirm').addEventListener('click', () => {
+            logResult("Firing single confirm...");
+            const result = window.confirm('Do you want to proceed? This should show a native dialog.');
+            logResult(`window.confirm returned: ${result} (type: ${typeof result})`);
+        });
+
+        document.getElementById('rapidConfirms').addEventListener('click', () => {
+            logResult("Firing 5 rapid confirms (every 50ms)...");
+            let confirmCount = 0;
+            const interval = setInterval(() => {
+                if (++confirmCount > 5) {
+                    clearInterval(interval);
+                    logResult('Finished firing rapid confirms.');
+                    return;
+                }
+                const result = window.confirm(`Rapid confirm #${confirmCount}. Do you see this?`);
+                logResult(`Rapid confirm #${confirmCount} returned: ${result}`);
+            }, 50);
+        });
+
+        // --- Prompt Button Handlers ---
+        document.getElementById('singlePrompt').addEventListener('click', () => {
+            logResult("Firing single prompt...");
+            const name = window.prompt('Please enter your name:', 'Alex');
+            if (name === null) {
+                logResult(`window.prompt returned: null (User clicked Cancel)`);
+            } else {
+                logResult(`window.prompt returned: "${name}" (type: ${typeof name})`);
+            }
+        });
+
+        document.getElementById('rapidPrompts').addEventListener('click', () => {
+            logResult("Firing 5 rapid prompts (every 50ms)...");
+            let promptCount = 0;
+            const interval = setInterval(() => {
+                if (++promptCount > 5) {
+                    clearInterval(interval);
+                    logResult('Finished firing rapid prompts.');
+                    return;
+                }
+                const result = window.prompt(`Rapid prompt #${promptCount}. Do you see this?`);
+                logResult(`Rapid prompt #${promptCount} returned: ${JSON.stringify(result)}`);
+            }, 50);
+        });
+
+        // --- Log Clear Button ---
+        document.getElementById('clearLog').addEventListener('click', () => {
+            logEl.textContent = '';
+        });
+    </script>
+</body>
+</html>

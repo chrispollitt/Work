@@ -39,32 +39,6 @@ function Source-Bat {
     }
 }
 
-function Wait-ForFileDownload {
-    param(
-        [string]$DownloadFolder,
-        [string]$FilePattern,
-        [int]$TimeoutSeconds = 300
-    )
-    
-    Write-Log "Waiting for file matching pattern '$FilePattern' in '$DownloadFolder'..."
-    
-    $startTime = Get-Date
-    do {
-        $files = Get-ChildItem -Path $DownloadFolder -Filter $FilePattern | Sort-Object LastWriteTime -Descending
-        
-        if ($files.Count -gt 0) {
-            # Return the most recent file
-            return $files[0].FullName
-        }
-        
-        Start-Sleep -Seconds 2
-        $elapsed = (Get-Date) - $startTime
-        
-    } while ($elapsed.TotalSeconds -lt $TimeoutSeconds)
-    
-    throw "Timeout waiting for file download after $TimeoutSeconds seconds"
-}
-
 function Format-PhoneNumber {
     param (
         [string]$Phone
@@ -135,13 +109,18 @@ try {
     
     Write-Log "Node.js script completed successfully"
     
-    # Step 3: Find the downloaded CSV file
+    # Step 3: Let dust settle then Check for existence of downloaded file
+    Start-Sleep -Seconds 2
     $downloadFolder = "$env:USERPROFILE\Downloads"
-    $csvPattern = "*attendees*.csv"
+    $csvFiles = Get-ChildItem -Path $downloadFolder -Filter "*attendees*.csv" | Sort-Object LastWriteTime -Descending
     
-    $csvPath = Wait-ForFileDownload -DownloadFolder $downloadFolder -FilePattern $csvPattern
+    if ($csvFiles.Count -eq 0) {
+        throw "No attendees CSV file found in Downloads folder after Node.js script completion"
+    }
+    
+    $csvPath = $csvFiles[0].FullName
     Write-Log "Found downloaded CSV: $csvPath"
-    
+
     # Step 4: Process the CSV file
     Write-Log "Processing CSV file..."
     
