@@ -13,3 +13,5 @@ config/settings.json
 # Ignore all files in a directory except one
 temp/*
 !temp/important.txt
+
+/Common/PowerShell/
